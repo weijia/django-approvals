@@ -8,6 +8,8 @@ import datetime
 # Django imports
 #
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db.models import permalink
 from django.template.loader import render_to_string
@@ -16,10 +18,11 @@ import django.dispatch
 
 # Model imports
 #
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, Group
 from django.contrib.sites.models import Site
-from django.contrib.contenttypes.models import ContentType
-from django.contrib.contenttypes import generic
+
+# from django.contrib.contenttypes.models import ContentType
+# from django.contrib.contenttypes import generic
 
 # If the django-notification app is present then import and we will use this
 # instead of sending email directly.
@@ -40,6 +43,7 @@ except ImportError:
 #
 approval_acted_on = django.dispatch.Signal()
 
+
 ####################################################################
 #
 class Approval(models.Model):
@@ -50,25 +54,34 @@ class Approval(models.Model):
         must have the is_staff bit set. We should make it so that you can
         specify a list of who is allowed to approve something.
     """
-    approved = models.NullBooleanField(_('approved'), null = True,
-                                       help_text = _("Has the 'needs_approval' "
-                                       "object been approved, turned down, or "
-                                       "not acted on yet."))
-    acted_on_by = models.ForeignKey(User, null = True, blank = True,
-                                    verbose_name = _('acted on by'),
-                                    help_text = _("If this approval has been "
-                                    "acted on, this will be the user that "
-                                    "has made the decision."))
-    created = models.DateTimeField(_('created'), db_index = True,
-                                   auto_now_add = True)
-    modified = models.DateTimeField(_('modified'), auto_now = True)
-    when_acted_on = models.DateTimeField(_('when acted on'),null = True,
-                                         blank = True)
-    reason = models.TextField(_('reason'), max_length = 2048, blank = True,
-                              null = True,
-                              help_text = _("When an object is approved or "
-                              "disapproved the person doing the action "
-                              "can supply some reason here."))
+    approved = models.NullBooleanField(_('approved'), null=True,
+                                       help_text=_("Has the 'needs_approval' "
+                                                   "object been approved, turned down, or "
+                                                   "not acted on yet."))
+    acted_on_by = models.ForeignKey(User, null=True, blank=True,
+                                    verbose_name=_('acted on by'),
+                                    help_text=_("If this approval has been "
+                                                "acted on, this will be the user that "
+                                                "has made the decision."),
+                                    related_name='approved_by')
+    group_who_permit_to_act = models.ForeignKey(Group, null=True, blank=True,
+                                                 verbose_name=_('Group of users who can approve'),
+                                                 help_text=_("Only users in this group can approve this request"))
+    who_permit_to_act = models.ForeignKey(User, null=True, blank=True,
+                                          verbose_name=_('Users who can approve'),
+                                          help_text=_("User who can approve this request"),
+                                          related_name='who_can_approve'
+                                          )
+    created = models.DateTimeField(_('created'), db_index=True,
+                                   auto_now_add=True)
+    modified = models.DateTimeField(_('modified'), auto_now=True)
+    when_acted_on = models.DateTimeField(_('when acted on'), null=True,
+                                         blank=True)
+    reason = models.TextField(_('reason'), max_length=2048, blank=True,
+                              null=True,
+                              help_text=_("When an object is approved or "
+                                          "disapproved the person doing the action "
+                                          "can supply some reason here."))
 
     # The generic foreign key relation. These three fields let us
     # relate an Approval object to any other model out there
@@ -76,9 +89,9 @@ class Approval(models.Model):
     #     key due to the type of 'object_id'
     #
     content_type = models.ForeignKey(ContentType,
-                                     verbose_name = _("content type"))
+                                     verbose_name=_("content type"))
     object_id = models.PositiveIntegerField(_('object id'))
-    needs_approval = generic.GenericForeignKey('content_type', 'object_id')
+    needs_approval = GenericForeignKey('content_type', 'object_id')
 
     class Meta:
         verbose_name = _('approval')
@@ -108,7 +121,7 @@ class Approval(models.Model):
 
     ####################################################################
     #
-    def save(self, force_insert = False, force_update = False):
+    def save(self, force_insert=False, force_update=False):
         """
         We override the `save()` method so that when an Approval is
         being saved for the first time we can send a message to the
@@ -140,8 +153,8 @@ class Approval(models.Model):
             #
             current_site = Site.objects.get_current()
             subject = render_to_string('approvals/approval_request_subj.txt',
-                                       { 'site'     : current_site,
-                                         'approval' : self })
+                                       {'site': current_site,
+                                        'approval': self})
 
             # Email subject *must not* contain newlines
             subject = ''.join(subject.splitlines())
@@ -154,23 +167,23 @@ class Approval(models.Model):
                 subject = subject[0:99]
 
             message = render_to_string('approvals/approval_request_email.txt',
-                                       { 'site'     : current_site,
-                                         'approval' : self })
+                                       {'site': current_site,
+                                        'approval': self})
             if notification:
-                notification.send(User.objects.filter(is_staff = True),
+                notification.send(User.objects.filter(is_staff=True),
                                   "pending_approvals",
-                                  { 'message' : message,
-                                    'subject' : subject,
-                                    'site'    : current_site,
-                                    'approval': self })
+                                  {'message': message,
+                                   'subject': subject,
+                                   'site': current_site,
+                                   'approval': self})
             else:
                 send_mail(subject, message, settings.DEFAULT_FROM_EMAIL,
-                          User.objects.filter(is_staff = True))
+                          User.objects.filter(is_staff=True))
         return
 
     ####################################################################
     #
-    def approve(self, approval_status, approver, reason = None):
+    def approve(self, approval_status, approver, reason=None):
         """
         This method does the work to mark an Approval as 'approved' or
         not.  It will update the object with its approval status (the
@@ -203,7 +216,7 @@ class Approval(models.Model):
 
         self.save()
 
-        approval_acted_on.send(sender = self)
+        approval_acted_on.send(sender=self)
         return
 
     ##################################################################
@@ -215,4 +228,3 @@ class Approval(models.Model):
         approval to only be acted on once.
         """
         return self.approved is not None
-
