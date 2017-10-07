@@ -169,8 +169,14 @@ class Approval(models.Model):
             message = render_to_string('approvals/approval_request_email.txt',
                                        {'site': current_site,
                                         'approval': self})
+            if self.group_who_permit_to_act is not None:
+                notification_receiver = self.group_who_permit_to_act.user_set.all()
+            elif self.who_permit_to_act is not None:
+                notification_receiver = [self.who_permit_to_act]
+            else:
+                notification_receiver = User.objects.filter(is_staff=True)
             if notification:
-                notification.send(User.objects.filter(is_staff=True),
+                notification.send(notification_receiver,
                                   "pending_approvals",
                                   {'message': message,
                                    'subject': subject,
@@ -178,7 +184,7 @@ class Approval(models.Model):
                                    'approval': self})
             else:
                 send_mail(subject, message, settings.DEFAULT_FROM_EMAIL,
-                          User.objects.filter(is_staff=True))
+                          notification_receiver)
         return
 
     ####################################################################
