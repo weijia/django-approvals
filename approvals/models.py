@@ -27,6 +27,8 @@ from django.contrib.sites.models import Site
 # If the django-notification app is present then import and we will use this
 # instead of sending email directly.
 #
+from djangoautoconf.model_utils.len_definitions import TEXT_LENGTH_1024
+
 try:
     from notification import models as notification
 except ImportError:
@@ -34,9 +36,12 @@ except ImportError:
 
 # favour django-mailer but fall back to django.core.mail
 try:
-    from mailer import send_mail
+    from post_office.utils import send_mail
 except ImportError:
-    from django.core.mail import send_mail
+    try:
+        from mailer import send_mail
+    except ImportError:
+        from django.core.mail import send_mail
 
 # We define a signal that is invoked whenever an Approval object
 # is acted upon (by calling its 'approve()' method.
@@ -75,6 +80,10 @@ class Approval(models.Model):
     created = models.DateTimeField(_('created'), db_index=True,
                                    auto_now_add=True)
     modified = models.DateTimeField(_('modified'), auto_now=True)
+    message_template = models.CharField(verbose_name=_('message template'), max_length=TEXT_LENGTH_1024,
+                                        null=True, blank=True)
+    subject_template = models.CharField(verbose_name=_('subject template'), max_length=TEXT_LENGTH_1024,
+                                        null=True, blank=True)
     when_acted_on = models.DateTimeField(_('when acted on'), null=True,
                                          blank=True)
     reason = models.TextField(_('reason'), max_length=2048, blank=True,
@@ -152,7 +161,10 @@ class Approval(models.Model):
             # objects.) Otherwise, use django's built in emailer.
             #
             current_site = Site.objects.get_current()
-            subject = render_to_string('approvals/approval_request_subj.txt',
+            subject_template = 'approvals/approval_request_subj.txt'
+            if self.subject_template is not None:
+                subject_template = self.subject_template
+            subject = render_to_string(subject_template,
                                        {'site': current_site,
                                         'approval': self})
 
@@ -166,7 +178,10 @@ class Approval(models.Model):
             if len(subject) > 100:
                 subject = subject[0:99]
 
-            message = render_to_string('approvals/approval_request_email.txt',
+            message_template = 'approvals/approval_request_email.txt'
+            if self.message_template is not None:
+                message_template = self.message_template
+            message = render_to_string(message_template,
                                        {'site': current_site,
                                         'approval': self})
             if self.group_who_permit_to_act is not None:
@@ -183,8 +198,11 @@ class Approval(models.Model):
                                    'site': current_site,
                                    'approval': self})
             else:
+                receiver_email = []
+                for user in notification_receiver:
+                    receiver_email.append(user.email)
                 send_mail(subject, message, settings.DEFAULT_FROM_EMAIL,
-                          notification_receiver)
+                          receiver_email)
         return
 
     ####################################################################
