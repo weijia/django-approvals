@@ -91,6 +91,7 @@ class Approval(models.Model):
                               help_text=_("When an object is approved or "
                                           "disapproved the person doing the action "
                                           "can supply some reason here."))
+    is_send_notification_now = models.BooleanField(default=True)
 
     # The generic foreign key relation. These three fields let us
     # relate an Approval object to any other model out there
