@@ -21,6 +21,6 @@ urlpatterns = patterns(
     '',
     url(r'^(?P<object_id>\d+)/act_on/$',
         is_staff(act_on_approval),
-        { 'template_name': 'approvals/act_on_approval.html' },
+        {'template_name': 'approvals/act_on_approval.html'},
         name='approvals_act_on'),
-    )
+)
