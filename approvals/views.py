@@ -21,12 +21,13 @@ from approvals.forms import ApprovalForm
 #
 from approvals.models import Approval
 
+
 #############################################################################
 #
 def act_on_approval(request, object_id,
-                    template_name = 'approvals/act_on_approval.html',
-                    form_class = ApprovalForm,
-                    extra_context = None):
+                    template_name='approvals/act_on_approval.html',
+                    form_class=ApprovalForm,
+                    extra_context=None):
     """
     Act on an approval object. This view presents an approval object
     with a form that lets the user approve or disapprove of an
@@ -38,7 +39,7 @@ def act_on_approval(request, object_id,
     - `template_name`: Path to the template to use.
     - `extra_context`: Dictionary of extra context data to pass to the template.
     """
-    object = get_object_or_404(Approval, pk = object_id)
+    operating_object = get_object_or_404(Approval, pk=object_id)
 
     # See if an approval is being acted upon by the approval form being
     # posted. If we have a valid approval form then invoke the approve method
@@ -52,17 +53,16 @@ def act_on_approval(request, object_id,
             else:
                 reason = None
 
-            object.approve(form.cleaned_data['approved'], request.user, reason)
+            operating_object.approve(form.cleaned_data['approved'], request.user, reason)
 
             if request.user.is_authenticated():
-                request.user.message_set.create(message = _("Approval '%s' "
-                                                            "processed") % \
-                                                    object)
+                request.user.message_set.create(message=_("Approval '%s' "
+                                                          "processed") % operating_object)
             return HttpResponseRedirect(reverse('approvals_act_on',
-                                                args = [object.id]))
+                                                args=[operating_object.id]))
     else:
-        form = form_class({'approved': object.approved,
-                           'reason':object.reason })
+        form = form_class({'approved': operating_object.approved,
+                           'reason': operating_object.reason})
 
     if extra_context is None:
         extra_context = {}
@@ -70,6 +70,6 @@ def act_on_approval(request, object_id,
     for key, value in extra_context.items():
         context[key] = callable(value) and value() or value
     return render_to_response(template_name,
-                              { 'form'  : form,
-                                'object': object},
+                              {'form': form,
+                               'object': operating_object},
                               context_instance=context)

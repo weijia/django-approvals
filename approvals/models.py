@@ -112,12 +112,12 @@ class Approval(models.Model):
     #
     def __unicode__(self):
         if self.approved is None:
-            appr = 'pending'
+            approval_state = 'pending'
         elif self.approved:
-            appr = 'approved'
+            approval_state = 'approved'
         else:
-            appr = 'denied'
-        return u"%d, %s, %s" % (self.id, appr, str(self.needs_approval))
+            approval_state = 'denied'
+        return u"%d, %s, %s" % (self.id, approval_state, str(self.needs_approval))
 
     ####################################################################
     #
@@ -155,17 +155,14 @@ class Approval(models.Model):
 
         super(Approval, self).save(force_insert, force_update)
 
-        if new:
+        if new and self.is_send_notification_now:
             # Now we send an email message to our site admins. If we have
             # the django-notification app installed use that to send
             # the message out (because it also creates notification
             # objects.) Otherwise, use django's built in emailer.
             #
             current_site = Site.objects.get_current()
-            subject_template = 'approvals/approval_request_subj.txt'
-            if self.subject_template is not None:
-                subject_template = self.subject_template
-            subject = render_to_string(subject_template,
+            subject = render_to_string(self.get_subject_template(),
                                        {'site': current_site,
                                         'approval': self})
 
@@ -179,18 +176,10 @@ class Approval(models.Model):
             if len(subject) > 100:
                 subject = subject[0:99]
 
-            message_template = 'approvals/approval_request_email.txt'
-            if self.message_template is not None:
-                message_template = self.message_template
-            message = render_to_string(message_template,
+            message = render_to_string(self.get_message_template(),
                                        {'site': current_site,
                                         'approval': self})
-            if self.group_who_permit_to_act is not None:
-                notification_receiver = self.group_who_permit_to_act.user_set.all()
-            elif self.who_permit_to_act is not None:
-                notification_receiver = [self.who_permit_to_act]
-            else:
-                notification_receiver = User.objects.filter(is_staff=True)
+            notification_receiver = self.get_message_receiver()
             if notification:
                 notification.send(notification_receiver,
                                   "pending_approvals",
@@ -205,6 +194,27 @@ class Approval(models.Model):
                 send_mail(subject, message, settings.DEFAULT_FROM_EMAIL,
                           receiver_email)
         return
+
+    def get_message_receiver(self):
+        if self.group_who_permit_to_act is not None:
+            notification_receiver = self.group_who_permit_to_act.user_set.all()
+        elif self.who_permit_to_act is not None:
+            notification_receiver = [self.who_permit_to_act]
+        else:
+            notification_receiver = User.objects.filter(is_staff=True)
+        return notification_receiver
+
+    def get_message_template(self):
+        message_template = 'approvals/approval_request_email.txt'
+        if self.message_template is not None:
+            message_template = self.message_template
+        return message_template
+
+    def get_subject_template(self):
+        subject_template = 'approvals/approval_request_subj.txt'
+        if self.subject_template is not None:
+            subject_template = self.subject_template
+        return subject_template
 
     ####################################################################
     #
